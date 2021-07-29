@@ -2,8 +2,6 @@ export interface FactorioNode {
     id: number,
     connection: number[];
     type: string;
-    connected_to: number[];
-    connection_from: number[];
     info?: RenderedNodeInformation
 }
 
@@ -12,9 +10,14 @@ export interface RenderedNodeInformation {
     y: number
 }
 
+export interface Line {
+    paths: Path2D[]
+    isHighlighted: boolean
+}
+
 type Coord = [number, number]
 
-export function processGraph(ctx: CanvasRenderingContext2D, data: FactorioNode[]) {
+export function processGraph(ctx: CanvasRenderingContext2D, data: FactorioNode[]): Line[] {
 
     // Filter for nodes
     const input_nodes = data.filter((node) => node.type == 'input');
@@ -148,11 +151,15 @@ export function processGraph(ctx: CanvasRenderingContext2D, data: FactorioNode[]
     }
 
     ctx.strokeStyle = 'black';
-    ctx.lineWidth = 5;
+
+    const lineWidth = 8
+    ctx.lineWidth = lineWidth;
+
+    const lines: Line[] = []
 
     // Connect input nodes
     for (let node of input_nodes) {
-        for (let connection_id of node.connected_to) {
+        for (let connection_id of node.connection) {
             // Get node to connect to
             let connecting_node = getNodeWithID(connection_id, splitter_nodes)
             if (connecting_node) {
@@ -160,64 +167,152 @@ export function processGraph(ctx: CanvasRenderingContext2D, data: FactorioNode[]
                 let origin_info = node.info!
                 let end_info = connecting_node.info!
                 
+                let line: Line = {
+                    paths: [],
+                    isHighlighted: false
+                }
+
                 // [Line to middle]
                 let line_start: Coord = [origin_info.x + (input_size_x / 2), origin_info.y + input_size_y]
-                let line_end: Coord = [origin_info.x + (input_size_x / 2), halfwayBetween(origin_info.y, end_info.y + input_size_y)]
-                drawLineWithCoords(line_start, line_end, ctx)
+                let line_end: Coord = [origin_info.x + (input_size_x / 2), fractionalBetween(2, origin_info.y, end_info.y + input_size_y)]
+                drawLineWithCoords(line_start, line_end, ctx, line)
 
                 // [Align X]
                 line_start = line_end
                 line_end = [end_info.x + input_size_x / 2, line_start[1]]
-                drawLineWithCoords(line_start, line_end, ctx)
+                drawLineWithCoords(line_start, line_end, ctx, line)
 
                 // [Line to destination]
                 line_start = line_end
                 line_end = [line_start[0], end_info.y]
-                drawLineWithCoords(line_start, line_end, ctx)
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                lines.push(line)
             }
         }
     }
 
     // Connect splitter nodes
     for (let node of splitter_nodes) {
-        for (let connection_id of node.connected_to) {
+        for (let connection_id of node.connection) {
             // Get node to connect to
-            let connecting_node = getNodeWithID(connection_id, output_nodes)
-            if (connecting_node) {
+            let output_connecting_node = getNodeWithID(connection_id, output_nodes)
+            let splitter_connecting_node = getNodeWithID(connection_id, splitter_nodes)
+
+            if (output_connecting_node) {
                 // Get node information for start and end
                 let origin_info = node.info!
-                let end_info = connecting_node.info!
+                let end_info = output_connecting_node.info!
+
+                let line: Line = {
+                    paths: [],
+                    isHighlighted: false
+                }
                 
                 // [Line to middle]
-                let line_start: Coord = [origin_info.x + (input_size_x / 2), origin_info.y + input_size_y]
-                let line_end: Coord = [origin_info.x + (input_size_x / 2), halfwayBetween(origin_info.y, end_info.y + input_size_y)]
-                drawLineWithCoords(line_start, line_end, ctx)
+                let line_start: Coord = [origin_info.x + (input_size_x / 2), origin_info.y + splitter_size_y]
+                let line_end: Coord = [origin_info.x + (input_size_x / 2), fractionalBetween(2, origin_info.y, origin_info.y + splitter_size_y + splitter_output_padding)]
+                drawLineWithCoords(line_start, line_end, ctx, line)
 
                 // [Align X]
                 line_start = line_end
                 line_end = [end_info.x + input_size_x / 2, line_start[1]]
-                drawLineWithCoords(line_start, line_end, ctx)
+                drawLineWithCoords(line_start, line_end, ctx, line)
 
                 // [Line to destination]
                 line_start = line_end
                 line_end = [line_start[0], end_info.y]
-                drawLineWithCoords(line_start, line_end, ctx)
+                drawLineWithCoords(line_start, line_end, ctx, line)
+                
+                lines.push(line)
+            }
+            else if (splitter_connecting_node) {
+                // Get node information for start and end
+                let origin_info = node.info!
+                let end_info = splitter_connecting_node.info!
+
+                let line: Line = {
+                    paths: [],
+                    isHighlighted: false
+                }
+                
+                // [Line to quater mark]
+                let line_start: Coord = [origin_info.x + (input_size_x / 2), origin_info.y + input_size_y]
+                let line_end: Coord = [origin_info.x + (input_size_x / 2), origin_info.y + input_size_y + splitter_output_padding / 8]
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                // [Align X with edge of square]
+                line_start = line_end
+                line_end = [end_info.x - input_size_x / 4, line_start[1]]
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                // [Align Y]
+                line_start = line_end
+                line_end = [line_start[0], end_info.y - input_splitter_padding / 8]
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                // [Align X with center of square]
+                line_start = line_end
+                line_end = [end_info.x + input_size_x / 2, line_start[1]]
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                // [Line to destination]
+                line_start = line_end
+                line_end = [line_start[0], end_info.y]
+                drawLineWithCoords(line_start, line_end, ctx, line)
+
+                lines.push(line)
             }
         }
     }
-    
+
+    console.log(lines)
+    return lines
 }
 
-function drawLineWithCoords(start: Coord, end: Coord, ctx: CanvasRenderingContext2D) {
-    ctx.beginPath()
-    ctx.moveTo(start[0], start[1])
-    ctx.lineTo(end[0], end[1])
-    ctx.stroke()
+export function highlightLine(ctx: CanvasRenderingContext2D, line: Line) {
+
+    if (line.isHighlighted) return;
+
+    for (let path of line.paths) {
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 8
+
+        ctx.stroke(path)
+    }
+
+    line.isHighlighted = true
+
 }
 
-function halfwayBetween(first: number, second: number): number {
+export function removeHighlightLine(ctx: CanvasRenderingContext2D, line: Line) {
+
+    if (!line.isHighlighted) return;
+    console.log('Function called')
+
+    for (let path of line.paths) {
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 8
+
+        ctx.stroke(path)
+    }
+
+    line.isHighlighted = false
+}
+
+function drawLineWithCoords(start: Coord, end: Coord, ctx: CanvasRenderingContext2D, line?: Line) {
+    let linePath = new Path2D()
+
+    linePath.moveTo(start[0], start[1])
+    linePath.lineTo(end[0], end[1])
+    ctx.stroke(linePath)
+
+    line.paths.push(linePath)
+}
+
+function fractionalBetween(fraction: number, first: number, second: number): number {
     let distance_between = (second) - (first)
-    return first + (distance_between / 2)
+    return first + (distance_between / fraction)
 }
 
 
